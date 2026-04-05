@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>GeoAI — Интеллектуальный анализ территорий</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+    <style>
+        :root {
+            --sidebar-left-width: 340px;
+            --sidebar-right-width: 360px;
+            --accent: #009B5F;
+            --accent-hover: #008750;
+            --accent-light: rgba(0,155,95,0.08);
+            --accent-light-border: rgba(0,155,95,0.25);
+            --text-dark: #0A2E3C;
+            --text-main: #3A4D58;
+            --text-secondary: #5A6E78;
+            --text-muted: #8A9BA5;
+            --divider: #D6DADE;
+            --bg-white: #FFFFFF;
+            --bg-sidebar: #F5F6F8;
+            --bg-card: #EEF0F2;
+            --bg-hover: #E4E8EB;
+            --danger: #D94040;
+            --success: #2EAD65;
+            --warning: #E8A820;
+            --shadow: 0 4px 24px rgba(10,46,60,0.10);
+            --shadow-sm: 0 2px 8px rgba(10,46,60,0.06);
+            --radius: 8px;
+            --radius-lg: 12px;
+            --transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+        }
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+        html,body{width:100%;height:100%;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;overflow:hidden;background:var(--bg-white);color:var(--text-dark);}
+        #map{position:absolute;top:0;bottom:0;left:var(--sidebar-left-width);right:var(--sidebar-right-width);z-index:1;transition:left var(--transition),right var(--transition);}
+        body.left-collapsed #map{left:0;}
+        body.right-collapsed #map{right:0;}
+        body.fullscreen-mode .sidebar-left,body.fullscreen-mode .sidebar-right{transform:translateX(0);opacity:0;pointer-events:none;}
+        body.fullscreen-mode #map{left:0;right:0;}
+        body.fullscreen-mode .sidebar-toggle-float-left,body.fullscreen-mode .sidebar-toggle-float-right{display:flex!important;}
+        .sidebar-left{position:fixed;top:0;left:0;width:var(--sidebar-left-width);height:100vh;background:var(--bg-sidebar);z-index:1000;display:flex;flex-direction:column;transition:transform var(--transition);border-right:1px solid var(--divider);}
+        body.left-collapsed .sidebar-left{transform:translateX(-100%);}
+        .sidebar-right{position:fixed;top:0;right:0;width:var(--sidebar-right-width);height:100vh;background:var(--bg-sidebar);z-index:1000;display:flex;flex-direction:column;transition:transform var(--transition);border-left:1px solid var(--divider);}
+        body.right-collapsed .sidebar-right{transform:translateX(100%);}
+        .sidebar-toggle-float-left,.sidebar-toggle-float-right{display:none;position:fixed;top:12px;z-index:1001;background:var(--bg-white);border:1px solid var(--divider);border-radius:var(--radius);width:42px;height:42px;color:var(--text-dark);cursor:pointer;font-size:1.1rem;align-items:center;justify-content:center;box-shadow:var(--shadow-sm);}
+        .sidebar-toggle-float-left{left:12px;}
+        .sidebar-toggle-float-right{right:12px;}
+        body.left-collapsed .sidebar-toggle-float-left{display:flex;}
+        body.right-collapsed .sidebar-toggle-float-right{display:flex;}
+        .sidebar-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--divider);flex-shrink:0;background:var(--bg-white);}
+        .logo{display:flex;align-items:center;gap:10px;font-size:1.15rem;font-weight:700;color:var(--accent);}
+        .logo i{font-size:1.4rem;}
+        .sidebar-toggle{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:6px;border-radius:6px;transition:all var(--transition);font-size:1rem;}
+        .sidebar-toggle:hover{background:var(--bg-hover);color:var(--text-dark);}
+        .sidebar-section{padding:14px 18px;flex-shrink:0;}
+        .sidebar-scrollable{flex:1;overflow-y:auto;min-height:0;}
+        .sidebar-divider{height:1px;background:var(--divider);margin:0 18px;flex-shrink:0;}
+        .section-title{display:flex;align-items:center;gap:8px;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-muted);margin-bottom:10px;}
+        .panel-title{font-size:0.88rem;font-weight:700;color:var(--text-dark);padding:18px 20px;border-bottom:1px solid var(--divider);background:var(--bg-white);flex-shrink:0;display:flex;align-items:center;gap:8px;}
+        .panel-title i{color:var(--accent);}
+        .search-box{position:relative;}
+        .search-box i.search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:0.85rem;pointer-events:none;}
+        .search-box input{width:100%;padding:10px 36px 10px 38px;background:var(--bg-white);border:1px solid var(--divider);border-radius:var(--radius);color:var(--text-dark);font-size:0.88rem;outline:none;transition:border-color var(--transition);}
+        .search-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-light);}
+        .search-box input::placeholder{color:var(--text-muted);}
+        .search-box .search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.8rem;display:none;padding:2px 4px;}
+        .search-box .search-clear:hover{color:var(--text-dark);}
+        .geo-search-results{position:absolute;top:100%;left:0;right:0;background:var(--bg-white);border:1px solid var(--divider);border-top:none;border-radius:0 0 var(--radius) var(--radius);box-shadow:var(--shadow);max-height:260px;overflow-y:auto;z-index:1100;display:none;}
+        .geo-search-results.visible{display:block;}
+        .geo-result-item{padding:10px 14px;cursor:pointer;font-size:0.84rem;color:var(--text-dark);border-bottom:1px solid var(--bg-card);display:flex;align-items:flex-start;gap:8px;transition:background var(--transition);}
+        .geo-result-item:last-child{border-bottom:none;}
+        .geo-result-item:hover{background:var(--accent-light);}
+        .geo-result-item i{color:var(--accent);margin-top:2px;flex-shrink:0;}
+        .geo-result-item .geo-result-text{flex:1;}
+        .geo-result-item .geo-result-name{font-weight:600;margin-bottom:2px;}
+        .geo-result-item .geo-result-desc{font-size:0.76rem;color:var(--text-muted);}
+        .geo-search-loading{padding:12px;text-align:center;color:var(--text-muted);font-size:0.82rem;}
+        .layers-list{display:flex;flex-direction:column;gap:2px;}
+        .layer-category{margin-bottom:6px;}
+        .category-header{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:6px;font-size:0.78rem;font-weight:600;color:var(--text-secondary);user-select:none;transition:background var(--transition);}
+        .category-header:hover{background:var(--bg-hover);}
+        .category-header i.chevron{font-size:0.6rem;transition:transform var(--transition);width:12px;text-align:center;}
+        .category-header.collapsed i.chevron{transform:rotate(-90deg);}
+        .category-items{display:flex;flex-direction:column;gap:1px;padding-left:4px;overflow:hidden;max-height:600px;transition:max-height 0.3s ease;}
+        .category-header.collapsed+.category-items{max-height:0!important;}
+        .layer-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;transition:background var(--transition);font-size:0.84rem;}
+        .layer-item:hover{background:var(--bg-hover);}
+        .layer-item.active{background:var(--accent-light);}
+        .layer-checkbox{position:relative;width:18px;height:18px;flex-shrink:0;}
+        .layer-checkbox input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer;z-index:2;margin:0;}
+        .layer-checkbox .checkmark{position:absolute;top:0;left:0;width:18px;height:18px;background:var(--bg-white);border:2px solid var(--divider);border-radius:4px;transition:all var(--transition);}
+        .layer-checkbox input:checked~.checkmark{background:var(--accent);border-color:var(--accent);}
+        .layer-checkbox .checkmark::after{content:'';position:absolute;display:none;left:5px;top:2px;width:4px;height:8px;border:solid white;border-width:0 2px 2px 0;transform:rotate(45deg);}
+        .layer-checkbox input:checked~.checkmark::after{display:block;}
+        .layer-name{flex:1;color:var(--text-dark);line-height:1.3;}
+        .layer-opacity{width:50px;flex-shrink:0;opacity:0;transition:opacity var(--transition);}
+        .layer-item:hover .layer-opacity,.layer-item.active .layer-opacity{opacity:1;}
+        .layer-opacity input[type="range"]{width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--divider);border-radius:2px;outline:none;cursor:pointer;}
+        .layer-opacity input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--accent);cursor:pointer;}
+        .loading-indicator{display:flex;align-items:center;gap:10px;padding:20px;color:var(--text-muted);font-size:0.88rem;}
+        .tool-buttons{display:flex;flex-direction:column;gap:6px;}
+        .tool-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;background:var(--bg-white);border:1px solid var(--divider);border-radius:var(--radius);color:var(--text-dark);font-size:0.84rem;cursor:pointer;transition:all var(--transition);text-align:left;}
+        .tool-btn:hover:not(:disabled){background:var(--bg-hover);border-color:var(--accent);}
+        .tool-btn:disabled{opacity:0.4;cursor:not-allowed;}
+        .tool-btn i{width:18px;text-align:center;font-size:0.95rem;color:var(--text-secondary);}
+        .tool-btn-danger:hover:not(:disabled){border-color:var(--danger);color:var(--danger);}
+        .tool-btn-danger:hover:not(:disabled) i{color:var(--danger);}
+        .tool-btn.active{border-color:var(--accent);background:var(--accent-light);color:var(--accent);}
+        .tool-btn.active i{color:var(--accent);}
+        .area-display{display:none;margin-top:12px;padding:14px 16px;background:var(--bg-white);border:1px solid var(--accent-light-border);border-radius:var(--radius);text-align:center;}
+        .area-display.visible{display:block;}
+        .area-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;font-weight:600;}
+        .area-value{font-size:1.6rem;font-weight:700;color:var(--accent);line-height:1;}
+        .area-unit{font-size:0.82rem;font-weight:500;color:var(--text-secondary);margin-left:4px;}
+        .chat-container{display:flex;flex-direction:column;flex:1;min-height:0;}
+        .chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;}
+        .chat-welcome{text-align:center;padding:30px 16px;color:var(--text-muted);font-size:0.84rem;line-height:1.6;}
+        .chat-welcome i{font-size:2.5rem;color:var(--accent);display:block;margin-bottom:12px;opacity:0.5;}
+        .chat-welcome strong{color:var(--text-secondary);}
+        .chat-msg{max-width:92%;padding:10px 14px;border-radius:12px;font-size:0.84rem;line-height:1.55;word-wrap:break-word;white-space:pre-wrap;}
+        .chat-msg.user{align-self:flex-end;background:var(--accent);color:white;border-bottom-right-radius:4px;}
+        .chat-msg.assistant{align-self:flex-start;background:var(--bg-white);color:var(--text-dark);border:1px solid var(--divider);border-bottom-left-radius:4px;}
+        .chat-msg.system-msg{align-self:center;background:var(--bg-card);color:var(--text-muted);font-size:0.78rem;text-align:center;border-radius:8px;padding:8px 14px;}
+        .chat-msg.error-msg{align-self:center;background:#FFF0F0;color:var(--danger);font-size:0.78rem;border:1px solid #FFDADA;border-radius:8px;padding:8px 14px;}
+        .typing-indicator{display:flex;align-items:center;gap:6px;padding:10px 14px;align-self:flex-start;color:var(--text-muted);font-size:0.82rem;}
+        .typing-indicator .dot{width:6px;height:6px;border-radius:50%;background:var(--text-muted);animation:typing 1.4s infinite;}
+        .typing-indicator .dot:nth-child(2){animation-delay:0.2s;}
+        .typing-indicator .dot:nth-child(3){animation-delay:0.4s;}
+        @keyframes typing{0%,60%,100%{opacity:0.3;}30%{opacity:1;}}
+        .chat-input-area{padding:12px 16px;border-top:1px solid var(--divider);background:var(--bg-white);flex-shrink:0;}
+        .chat-input-wrap{display:flex;gap:8px;align-items:flex-end;}
+        .chat-input-wrap textarea{flex:1;padding:10px 14px;background:var(--bg-card);border:1px solid var(--divider);border-radius:var(--radius);color:var(--text-dark);font-size:0.84rem;font-family:inherit;outline:none;resize:none;min-height:42px;max-height:120px;transition:border-color var(--transition);line-height:1.4;}
+        .chat-input-wrap textarea:focus{border-color:var(--accent);}
+        .chat-input-wrap textarea::placeholder{color:var(--text-muted);}
+        .chat-send-btn{width:42px;height:42px;flex-shrink:0;background:var(--accent);border:none;border-radius:var(--radius);color:white;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all var(--transition);}
+        .chat-send-btn:hover:not(:disabled){background:var(--accent-hover);}
+        .chat-send-btn:disabled{background:var(--divider);cursor:not-allowed;color:var(--text-muted);}
+        .chat-export-btn{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:6px 14px;background:var(--accent-light);border:1px solid var(--accent-light-border);border-radius:6px;color:var(--accent);font-size:0.78rem;cursor:pointer;transition:all var(--transition);font-weight:600;}
+        .chat-export-btn:hover{background:var(--accent);color:white;border-color:var(--accent);}
+        .map-switcher{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:900;display:flex;background:var(--bg-white);border-radius:28px;box-shadow:var(--shadow);border:1px solid var(--divider);overflow:hidden;}
+        .map-switch-btn{padding:10px 22px;background:none;border:none;font-size:0.82rem;font-weight:600;color:var(--text-secondary);cursor:pointer;transition:all var(--transition);display:flex;align-items:center;gap:7px;white-space:nowrap;}
+        .map-switch-btn:first-child{border-right:1px solid var(--divider);}
+        .map-switch-btn:hover{color:var(--text-dark);background:var(--bg-hover);}
+        .map-switch-btn.active{background:var(--accent);color:white;}
+        .map-switch-btn.active:hover{background:var(--accent-hover);}
+        .map-controls-top{position:fixed;z-index:900;display:flex;flex-direction:column;gap:6px;}
+        .map-ctrl-btn{width:40px;height:40px;background:var(--bg-white);border:1px solid var(--divider);border-radius:var(--radius);color:var(--text-main);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1rem;transition:all var(--transition);position:relative;box-shadow:var(--shadow-sm);}
+        .map-ctrl-btn:hover{background:var(--bg-hover);border-color:var(--accent);color:var(--accent);}
+        .map-ctrl-btn.active{background:var(--accent-light);border-color:var(--accent);color:var(--accent);}
+        .map-ctrl-btn .tip{display:none;position:absolute;right:50px;top:50%;transform:translateY(-50%);background:var(--text-dark);border-radius:6px;padding:6px 12px;font-size:0.72rem;white-space:nowrap;color:var(--bg-white);pointer-events:none;}
+        .map-ctrl-btn:hover .tip{display:block;}
+        .map-zoom-controls{position:fixed;bottom:80px;z-index:900;display:flex;flex-direction:column;box-shadow:var(--shadow-sm);border-radius:var(--radius);overflow:hidden;}
+        .zoom-btn{width:40px;height:40px;background:var(--bg-white);border:1px solid var(--divider);color:var(--text-dark);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;transition:all var(--transition);}
+        .zoom-btn:last-child{border-top:none;}
+        .zoom-btn:hover{background:var(--bg-hover);color:var(--accent);}
+        .nav-panel{position:fixed;z-index:900;display:none;background:var(--bg-white);border:1px solid var(--divider);border-radius:var(--radius-lg);padding:8px;box-shadow:var(--shadow);}
+        .nav-panel.visible{display:block;}
+        .nav-grid{display:grid;grid-template-columns:36px 36px 36px;grid-template-rows:36px 36px 36px;gap:3px;}
+        .nav-btn{width:36px;height:36px;background:var(--bg-card);border:1px solid var(--divider);border-radius:6px;color:var(--text-main);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.85rem;transition:all var(--transition);}
+        .nav-btn:hover{background:var(--bg-hover);border-color:var(--accent);color:var(--accent);}
+        .nav-btn.center-btn{background:var(--accent);border-color:var(--accent);color:white;}
+        .nav-btn.center-btn:hover{background:var(--accent-hover);}
+        .nav-empty{width:36px;height:36px;}
+        .sidebar-footer{padding:10px 18px;border-top:1px solid var(--divider);flex-shrink:0;background:var(--bg-white);}
+        .coords{display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-muted);font-family:'Courier New',monospace;}
+        .notifications{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+        .notification{background:var(--bg-white);border:1px solid var(--divider);border-radius:var(--radius);padding:12px 20px;color:var(--text-dark);font-size:0.88rem;box-shadow:var(--shadow);pointer-events:auto;animation:notifIn 0.3s ease;display:flex;align-items:center;gap:10px;max-width:520px;}
+        .notification.success{border-left:4px solid var(--success);}
+        .notification.success i{color:var(--success);}
+        .notification.error{border-left:4px solid var(--danger);}
+        .notification.error i{color:var(--danger);}
+        .notification.info{border-left:4px solid var(--accent);}
+        .notification.info i{color:var(--accent);}
+        .notification.warning{border-left:4px solid var(--warning);}
+        .notification.warning i{color:var(--warning);}
+        @keyframes notifIn{from{opacity:0;transform:translateY(-12px);}to{opacity:1;transform:translateY(0);}}
+        .sidebar-scrollable::-webkit-scrollbar,.chat-messages::-webkit-scrollbar{width:5px;}
+        .sidebar-scrollable::-webkit-scrollbar-track,.chat-messages::-webkit-scrollbar-track{background:transparent;}
+        .sidebar-scrollable::-webkit-scrollbar-thumb,.chat-messages::-webkit-scrollbar-thumb{background:var(--divider);border-radius:3px;}
+        .leaflet-container{background:var(--bg-card)!important;font-size:0.88rem!important;}
+        .leaflet-control-zoom{display:none!important;}
+        .leaflet-control-layers{display:none!important;}
+        .leaflet-marker-icon.leaflet-div-icon{background:var(--accent)!important;border:2px solid white!important;box-shadow:0 1px 4px rgba(0,0,0,0.3)!important;border-radius:50%!important;width:12px!important;height:12px!important;margin-left:-6px!important;margin-top:-6px!important;}
+        .search-marker-popup{font-size:0.84rem;line-height:1.4;}
+        .search-marker-popup b{color:var(--accent);}
+        @media(max-width:768px){:root{--sidebar-left-width:280px;--sidebar-right-width:300px;}}
+    </style>
+</head>
+<body>
+    <button class="sidebar-toggle-float-left" id="btn-open-left"><i class="fas fa-chevron-right"></i></button>
+    <button class="sidebar-toggle-float-right" id="btn-open-right"><i class="fas fa-chevron-left"></i></button>
+
+    <aside class="sidebar-left">
+        <div class="sidebar-header">
+            <div class="logo"><i class="fas fa-brain"></i><span>GeoAI</span></div>
+            <button class="sidebar-toggle" id="btn-close-left"><i class="fas fa-chevron-left"></i></button>
+        </div>
+        <div class="sidebar-section">
+            <div class="section-title"><i class="fas fa-map-marker-alt"></i><span>Поиск на карте</span></div>
+            <div class="search-box" id="geo-search-box">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" id="geo-search-input" placeholder="Адрес, место, координаты..." autocomplete="off" />
+                <button class="search-clear" id="geo-search-clear"><i class="fas fa-times"></i></button>
+                <div class="geo-search-results" id="geo-search-results"></div>
+            </div>
+        </div>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-section">
+            <div class="search-box"><i class="fas fa-filter search-icon"></i><input type="text" id="layer-search" placeholder="Фильтр слоёв..." /></div>
+        </div>
+        <div class="sidebar-section sidebar-scrollable">
+            <div class="section-title"><i class="fas fa-layer-group"></i><span>Слои данных</span></div>
+            <div id="layers-list" class="layers-list"><div class="loading-indicator"><i class="fas fa-spinner fa-spin"></i><span>Загрузка...</span></div></div>
+        </div>
+        <div class="sidebar-footer">
+            <div class="coords" id="cursor-coords"><i class="fas fa-crosshairs"></i><span>—</span></div>
+        </div>
+    </aside>
+
+    <aside class="sidebar-right">
+        <div class="panel-title"><i class="fas fa-tools"></i> Панель управления</div>
+        <div class="sidebar-section">
+            <div class="section-title"><i class="fas fa-draw-polygon"></i><span>Инструменты</span></div>
+            <div class="tool-buttons">
+                <button class="tool-btn" id="btn-draw"><i class="fas fa-draw-polygon"></i><span>Нарисовать полигон</span></button>
+                <button class="tool-btn tool-btn-danger" id="btn-clear" disabled><i class="fas fa-trash-alt"></i><span>Удалить полигон</span></button>
+            </div>
+            <div class="area-display" id="area-box">
+                <div class="area-label">Площадь территории рассмотрения</div>
+                <div><span class="area-value" id="area-val">0.0000</span><span class="area-unit">га</span></div>
+            </div>
+        </div>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-section">
+            <div class="section-title"><i class="fas fa-download"></i><span>Экспорт</span></div>
+            <div class="tool-buttons">
+                <button class="tool-btn" id="btn-png"><i class="fas fa-image"></i><span>Скриншот карты (PNG)</span></button>
+                <button class="tool-btn" id="btn-geojson" disabled><i class="fas fa-file-code"></i><span>Полигон (GeoJSON)</span></button>
+            </div>
+        </div>
+        <div class="sidebar-divider"></div>
+        <div class="chat-container">
+            <div class="sidebar-section" style="flex-shrink:0;padding-bottom:0;">
+                <div class="section-title"><i class="fas fa-robot"></i><span>Консультант GeoAI</span></div>
+            </div>
+            <div class="chat-messages" id="chat-box">
+                <div class="chat-welcome" id="chat-welcome"><i class="fas fa-robot"></i>Выберите участок на карте и задайте вопрос.<br/><strong>Например:</strong> «Хочу построить жилой комплекс»</div>
+            </div>
+            <div class="chat-input-area">
+                <div class="chat-input-wrap">
+                    <textarea id="chat-input" rows="1" placeholder="Введите вопрос..."></textarea>
+                    <button class="chat-send-btn" id="btn-send" disabled><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <div id="map"></div>
+
+    <div class="map-switcher">
+        <button class="map-switch-btn active" id="btn-base-map"><i class="fas fa-map"></i> Карта</button>
+        <button class="map-switch-btn" id="btn-base-sat"><i class="fas fa-satellite"></i> Спутник</button>
+    </div>
+    <div class="map-controls-top" id="map-ctrls" style="right:376px;top:16px;">
+        <button class="map-ctrl-btn" id="btn-fs"><i class="fas fa-expand"></i><span class="tip">Во весь экран</span></button>
+        <button class="map-ctrl-btn" id="btn-nav"><i class="fas fa-arrows-alt"></i><span class="tip">Навигация</span></button>
+    </div>
+    <div class="map-zoom-controls" id="zoom-ctrls" style="right:376px;bottom:80px;">
+        <button class="zoom-btn" id="btn-zin">+</button>
+        <button class="zoom-btn" id="btn-zout">−</button>
+    </div>
+    <div class="nav-panel" id="nav-panel" style="right:430px;bottom:70px;">
+        <div class="nav-grid">
+            <div class="nav-empty"></div><button class="nav-btn" id="nav-u"><i class="fas fa-chevron-up"></i></button><div class="nav-empty"></div>
+            <button class="nav-btn" id="nav-l"><i class="fas fa-chevron-left"></i></button><button class="nav-btn center-btn" id="nav-c"><i class="fas fa-crosshairs"></i></button><button class="nav-btn" id="nav-r"><i class="fas fa-chevron-right"></i></button>
+            <div class="nav-empty"></div><button class="nav-btn" id="nav-d"><i class="fas fa-chevron-down"></i></button><div class="nav-empty"></div>
+        </div>
+    </div>
+    <div id="notifications" class="notifications"></div>
+
+    <script>
+    (function(){
+        'use strict';
+        var MAX_AREA_HA=10, START=[47.0951,37.5415], START_ZOOM=10;
+        var YANDEX_API_KEY='';
+
+        var territory={geojson:null,areaHa:0,center:null,layersData:null,chatHistory:[]};
+        function setTerritory(geo,aha){
+            territory.geojson=geo;territory.areaHa=aha;
+            try{var c=turf.centroid(turf.polygon(geo.coordinates));territory.center=[c.geometry.coordinates[1],c.geometry.coordinates[0]];}catch(e){territory.center=null;}
+            territory.layersData=null;territory.chatHistory=[];
+        }
+        function resetTerritory(){territory.geojson=null;territory.areaHa=0;territory.center=null;territory.layersData=null;territory.chatHistory=[];}
+
+        var notifBox=document.getElementById('notifications');
+        function notify(msg,type,dur){
+            type=type||'info';dur=dur||4000;
+            var ic={success:'fa-check-circle',error:'fa-exclamation-circle',warning:'fa-exclamation-triangle',info:'fa-info-circle'};
+            var el=document.createElement('div');el.className='notification '+type;
+            el.innerHTML='<i class="fas '+(ic[type]||ic.info)+'"></i><span>'+msg+'</span>';
+            notifBox.appendChild(el);
+            setTimeout(function(){el.style.opacity='0';el.style.transform='translateY(-12px)';el.style.transition='all 0.3s';setTimeout(function(){el.remove();},300);},dur);
+        }
+
+        // ═══ Загрузка конфига ═══
+        fetch('/api/config').then(function(r){return r.json();}).then(function(data){
+            if(data.yandex_api_key){YANDEX_API_KEY=data.yandex_api_key;console.log('[GeoAI] YANDEX_API_KEY загружен');}
+        }).catch(function(e){console.warn('[GeoAI] Ошибка загрузки конфига:',e);});
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ЯНДЕКС КАРТА — Кастомная CRS
+        //
+        // Проблема: Яндекс тайлы используют эллипсоидную проекцию Меркатора
+        // на эллипсоиде WGS-84 (EPSG:3395), а не сферическую (EPSG:3857).
+        // Leaflet по умолчанию использует EPSG:3857 (сферический Меркатор),
+        // поэтому Яндекс-тайлы сдвинуты по Y.
+        //
+        // Решение: НЕ менять CRS карты (иначе GEE слои поедут).
+        // Вместо этого — проксировать Яндекс тайлы через бэкенд, который
+        // пересчитывает координаты, ИЛИ использовать Яндекс Maps JavaScript API.
+        //
+        // Самое простое и надёжное решение: загрузить Яндекс карту через
+        // их официальный JavaScript API поверх Leaflet, используя
+        // Yandex.Maps API v2/v3 как тайловый слой с правильной проекцией.
+        //
+        // НО! Проще всего: подгрузить тайлы через прокси-эндпоинт на бэкенде,
+        // который запрашивает нужный тайл у Яндекса по lat/lon а не по x/y.
+        //
+        // САМОЕ ПРОСТОЕ РЕШЕНИЕ (без изменения бэкенда):
+        // Использовать Яндекс Static API для отрисовки тайлов с правильными
+        // координатами ИЛИ пересчитать Y-координату в getTileUrl.
+        //
+        // Яндекс тайлы с параметром `projection=web_mercator` отдают тайлы
+        // в стандартной проекции EPSG:3857!
+        // ═══════════════════════════════════════════════════════════════════
+
+        var map = L.map('map', {center:START, zoom:START_ZOOM, zoomControl:false, preferCanvas:true});
+        map.attributionControl.setPrefix(false);
+        // Яндекс тайлы — обычная карта
+        // Используем ПРАВИЛЬНЫЙ URL с явной проекцией web_mercator
+        // Это заставляет Яндекс отдавать тайлы в стандартной EPSG:3857,
+        // совместимой с Leaflet и GEE.
+        var baseMap = L.tileLayer(
+            'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=1&lang=ru_RU&projection=web_mercator',
+            {attribution:'© Яндекс', maxZoom:19}
+        );
+
+        // Яндекс спутник
+        var baseSat = L.tileLayer(
+            'https://core-sat.maps.yandex.net/tiles?l=sat&x={x}&y={y}&z={z}&scale=1&lang=ru_RU&projection=web_mercator',
+            {attribution:'© Яндекс', maxZoom:19}
+        );
+
+        // Яндекс подписи для гибрида
+        var yandexLabels = L.tileLayer(
+            'https://core-renderer-tiles.maps.yandex.net/tiles?l=skl&x={x}&y={y}&z={z}&scale=1&lang=ru_RU&projection=web_mercator',
+            {maxZoom:19, pane:'overlayPane', opacity:0.9}
+        );
+
+        baseMap.addTo(map);
+        L.control.scale({imperial:false, position:'bottomleft'}).addTo(map);
+        var currentBase='map';
+
+        var coordsEl=document.getElementById('cursor-coords');
+        map.on('mousemove',function(e){coordsEl.innerHTML='<i class="fas fa-crosshairs"></i><span>'+e.latlng.lat.toFixed(5)+', '+e.latlng.lng.toFixed(5)+'</span>';});
+
+        // ═══ Слои GEE ═══
+        var activeLayers={},tileCache={};
+        function loadLayers(){
+            var box=document.getElementById('layers-list');
+            fetch('/api/layers').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+            .then(function(data){
+                var cats={};data.layers.forEach(function(l){if(!cats[l.category])cats[l.category]=[];cats[l.category].push(l);});
+                box.innerHTML='';
+                var icons={'Рельеф':'fa-mountain','Покров':'fa-tree','Вода':'fa-water','Население':'fa-users','Растительность':'fa-leaf','Климат':'fa-cloud-sun','Почвы':'fa-seedling'};
+                Object.keys(cats).forEach(function(cat){
+                    var d=document.createElement('div');d.className='layer-category';var h='';
+                    cats[cat].forEach(function(l){h+='<div class="layer-item" data-id="'+l.id+'" data-name="'+l.name+'"><label class="layer-checkbox"><input type="checkbox" data-id="'+l.id+'"/><span class="checkmark"></span></label><span class="layer-name">'+l.name+'</span><div class="layer-opacity"><input type="range" min="0" max="100" value="80" data-id="'+l.id+'"/></div></div>';});
+                    d.innerHTML='<div class="category-header"><i class="fas fa-chevron-down chevron"></i><i class="fas '+(icons[cat]||'fa-layer-group')+'"></i><span>'+cat+'</span></div><div class="category-items">'+h+'</div>';
+                    box.appendChild(d);
+                });
+                document.querySelectorAll('.category-header').forEach(function(h){h.addEventListener('click',function(){h.classList.toggle('collapsed');});});
+                document.querySelectorAll('.layer-checkbox input').forEach(function(cb){cb.addEventListener('change',function(){var id=cb.getAttribute('data-id');var it=cb.closest('.layer-item');if(cb.checked){it.classList.add('active');addTL(id);}else{it.classList.remove('active');rmTL(id);}});});
+                document.querySelectorAll('.layer-opacity input').forEach(function(sl){sl.addEventListener('input',function(){var id=sl.getAttribute('data-id');if(activeLayers[id])activeLayers[id].setOpacity(parseInt(sl.value)/100);});});
+            }).catch(function(e){box.innerHTML='<div class="loading-indicator" style="color:var(--danger);">Ошибка: '+e.message+'</div>';});
+        }
+        function addTL(id){
+            if(activeLayers[id])return;notify('Загрузка слоя...','info');
+            if(tileCache[id]){mkTL(id,tileCache[id]);return;}
+            fetch('/api/tiles/'+id).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+            .then(function(d){tileCache[id]=d.tile_url;mkTL(id,d.tile_url);})
+            .catch(function(e){notify('Ошибка: '+e.message,'error');var cb=document.querySelector('.layer-checkbox input[data-id="'+id+'"]');if(cb){cb.checked=false;cb.closest('.layer-item').classList.remove('active');}});
+        }
+        function mkTL(id,url){var tl=L.tileLayer(url,{opacity:0.8,maxZoom:19,crossOrigin:true});tl.addTo(map);activeLayers[id]=tl;notify('Слой добавлен','success');}
+        function rmTL(id){if(activeLayers[id]){map.removeLayer(activeLayers[id]);delete activeLayers[id];}}
+
+        document.getElementById('layer-search').addEventListener('input',function(){
+            var q=this.value.toLowerCase().trim();
+            document.querySelectorAll('.layer-item').forEach(function(el){el.style.display=el.getAttribute('data-name').toLowerCase().indexOf(q)!==-1?'':'none';});
+            if(q)document.querySelectorAll('.category-header').forEach(function(h){h.classList.remove('collapsed');});
+        });
+
+        // ═══ Поиск по Яндекс Геокодеру ═══
+        var geoSearchInput=document.getElementById('geo-search-input');
+        var geoSearchResults=document.getElementById('geo-search-results');
+        var geoSearchClear=document.getElementById('geo-search-clear');
+        var searchDebounceTimer=null, searchMarker=null;
+
+        geoSearchInput.addEventListener('input',function(){
+            var q=this.value.trim();geoSearchClear.style.display=q?'block':'none';
+            clearTimeout(searchDebounceTimer);
+            if(q.length<2){geoSearchResults.classList.remove('visible');geoSearchResults.innerHTML='';return;}
+            searchDebounceTimer=setTimeout(function(){performGeoSearch(q);},350);
+        });
+        geoSearchInput.addEventListener('keydown',function(e){
+            if(e.key==='Enter'){e.preventDefault();var q=this.value.trim();if(q.length>=2)performGeoSearch(q);}
+            if(e.key==='Escape')geoSearchResults.classList.remove('visible');
+        });
+        geoSearchClear.addEventListener('click',function(){
+            geoSearchInput.value='';geoSearchClear.style.display='none';
+            geoSearchResults.classList.remove('visible');geoSearchResults.innerHTML='';
+            if(searchMarker){map.removeLayer(searchMarker);searchMarker=null;}
+        });
+        document.addEventListener('click',function(e){
+            if(!document.getElementById('geo-search-box').contains(e.target))geoSearchResults.classList.remove('visible');
+        });
+
+        function performGeoSearch(query){
+            geoSearchResults.innerHTML='<div class="geo-search-loading"><i class="fas fa-spinner fa-spin"></i> Поиск...</div>';
+            geoSearchResults.classList.add('visible');
+
+            if(YANDEX_API_KEY){
+                var url='https://geocode-maps.yandex.ru/1.x/?apikey='+encodeURIComponent(YANDEX_API_KEY)
+                    +'&geocode='+encodeURIComponent(query)+'&format=json&results=7&lang=ru_RU';
+                fetch(url).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+                .then(function(data){
+                    var members=[];try{members=data.response.GeoObjectCollection.featureMember||[];}catch(e){}
+                    var results=members.map(function(m){
+                        var obj=m.GeoObject,pos=obj.Point.pos.split(' ');
+                        var meta=(obj.metaDataProperty&&obj.metaDataProperty.GeocoderMetaData)||{};
+                        return{name:obj.name||'',description:obj.description||'',lon:parseFloat(pos[0]),lat:parseFloat(pos[1]),kind:meta.kind||''};
+                    });
+                    renderGeoResults({results:results});
+                }).catch(function(){
+                    fetch('/api/geocode?q='+encodeURIComponent(query)).then(function(r){return r.json();}).then(function(d){renderGeoResults(d);})
+                    .catch(function(){geoSearchResults.innerHTML='<div class="geo-search-loading" style="color:var(--danger);">Ошибка</div>';});
+                });
+            } else {
+                fetch('/api/geocode?q='+encodeURIComponent(query)).then(function(r){return r.json();}).then(function(d){renderGeoResults(d);})
+                .catch(function(){geoSearchResults.innerHTML='<div class="geo-search-loading" style="color:var(--danger);">Ошибка</div>';});
+            }
+        }
+
+        function renderGeoResults(data){
+            var results=data.results||[];
+            if(!results.length){geoSearchResults.innerHTML='<div class="geo-search-loading">Ничего не найдено</div>';return;}
+            var html='';
+            var ki={'house':'fa-home','street':'fa-road','metro':'fa-subway','district':'fa-map','locality':'fa-city','province':'fa-map-marked','country':'fa-globe','hydro':'fa-water','vegetation':'fa-tree','airport':'fa-plane','railway':'fa-train','route':'fa-route'};
+            results.forEach(function(r){
+                html+='<div class="geo-result-item" data-lat="'+r.lat+'" data-lon="'+r.lon+'"><i class="fas '+(ki[r.kind]||'fa-map-marker-alt')+'"></i><div class="geo-result-text"><div class="geo-result-name">'+escapeHtml(r.name)+'</div>'+(r.description?'<div class="geo-result-desc">'+escapeHtml(r.description)+'</div>':'')+'</div></div>';
+            });
+            geoSearchResults.innerHTML=html;geoSearchResults.classList.add('visible');
+            geoSearchResults.querySelectorAll('.geo-result-item').forEach(function(el){
+                el.addEventListener('click',function(){
+                    var lat=parseFloat(this.getAttribute('data-lat')),lon=parseFloat(this.getAttribute('data-lon'));
+                    var name=this.querySelector('.geo-result-name').textContent;
+                    var descEl=this.querySelector('.geo-result-desc'),desc=descEl?descEl.textContent:'';
+                    if(searchMarker){map.removeLayer(searchMarker);searchMarker=null;}
+                    map.setView([lat,lon],16);
+                    searchMarker=L.marker([lat,lon],{icon:L.divIcon({className:'search-result-marker',html:'<div style="background:#009B5F;width:14px;height:14px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map);
+                    searchMarker.bindPopup('<div class="search-marker-popup"><b>'+escapeHtml(name)+'</b>'+(desc?'<br/>'+escapeHtml(desc):'')+'<br/><small>'+lat.toFixed(5)+', '+lon.toFixed(5)+'</small></div>').openPopup();
+                    geoSearchResults.classList.remove('visible');geoSearchInput.value=name;
+                    notify('Найдено: '+name,'success',3000);
+                });
+            });
+        }
+        function escapeHtml(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+        // ═══ Полигон ═══
+        var drawnItems=new L.FeatureGroup();map.addLayer(drawnItems);
+        var drawer=null,isDrawing=false,currentGeo=null;
+        map.on(L.Draw.Event.CREATED,function(e){
+            var layer=e.layer,geo=layer.toGeoJSON().geometry;
+            var am2=turf.area(turf.polygon(geo.coordinates)),aha=am2/10000;
+            if(aha>MAX_AREA_HA){notify('Площадь превышает '+MAX_AREA_HA+' га.','warning',6000);isDrawing=false;document.getElementById('btn-draw').classList.remove('active');return;}
+            drawnItems.clearLayers();
+            layer.setStyle({color:'#009B5F',fillColor:'#009B5F',fillOpacity:0.08,weight:2.5,opacity:1});
+            drawnItems.addLayer(layer);currentGeo=geo;isDrawing=false;
+            document.getElementById('btn-draw').classList.remove('active');
+            document.getElementById('btn-clear').disabled=false;document.getElementById('btn-geojson').disabled=false;
+            document.getElementById('area-box').classList.add('visible');document.getElementById('area-val').textContent=aha.toFixed(4);
+            setTerritory(geo,aha);document.getElementById('btn-send').disabled=false;
+            var w=document.getElementById('chat-welcome');if(w)w.remove();
+            addChatSys('Участок выбран: '+aha.toFixed(4)+' га. Задайте вопрос.');
+            notify('Полигон создан! '+aha.toFixed(4)+' га','success');
+        });
+        map.on(L.Draw.Event.DRAWSTOP,function(){isDrawing=false;document.getElementById('btn-draw').classList.remove('active');});
+        document.getElementById('btn-draw').addEventListener('click',function(){
+            if(isDrawing){if(drawer){drawer.disable();drawer=null;}isDrawing=false;this.classList.remove('active');}
+            else{isDrawing=true;this.classList.add('active');drawer=new L.Draw.Polygon(map,{shapeOptions:{color:'#009B5F',fillColor:'#009B5F',fillOpacity:0.08,weight:2.5},icon:new L.DivIcon({className:'leaflet-div-icon',iconSize:[12,12]}),allowIntersection:false,showArea:false,metric:true,repeatMode:false});drawer.enable();notify('Кликайте для точек. Двойной клик — завершить.','info');}
+        });
+        document.getElementById('btn-clear').addEventListener('click',function(){
+            if(drawer){drawer.disable();drawer=null;}isDrawing=false;drawnItems.clearLayers();currentGeo=null;
+            document.getElementById('btn-draw').classList.remove('active');this.disabled=true;document.getElementById('btn-geojson').disabled=true;
+            document.getElementById('area-box').classList.remove('visible');resetTerritory();resetChat();
+        });
+
+        // ═══ Переключатель ═══
+        document.getElementById('btn-base-map').addEventListener('click',function(){
+            if(currentBase==='map')return;
+            map.removeLayer(baseSat);if(map.hasLayer(yandexLabels))map.removeLayer(yandexLabels);
+            baseMap.addTo(map);currentBase='map';
+            this.classList.add('active');document.getElementById('btn-base-sat').classList.remove('active');
+        });
+        document.getElementById('btn-base-sat').addEventListener('click',function(){
+            if(currentBase==='satellite')return;
+            map.removeLayer(baseMap);baseSat.addTo(map);yandexLabels.addTo(map);
+            currentBase='satellite';this.classList.add('active');document.getElementById('btn-base-map').classList.remove('active');
+        });
+
+        // ═══ Сайдбары ═══
+        document.getElementById('btn-close-left').addEventListener('click',function(){document.body.classList.add('left-collapsed');setTimeout(function(){map.invalidateSize();},300);reposCtrls();});
+        document.getElementById('btn-open-left').addEventListener('click',function(){document.body.classList.remove('left-collapsed');setTimeout(function(){map.invalidateSize();},300);reposCtrls();});
+        document.getElementById('btn-open-right').addEventListener('click',function(){document.body.classList.remove('right-collapsed');setTimeout(function(){map.invalidateSize();},300);reposCtrls();});
+        function reposCtrls(){var r=document.body.classList.contains('right-collapsed')?16:376;document.getElementById('map-ctrls').style.right=r+'px';document.getElementById('zoom-ctrls').style.right=r+'px';document.getElementById('nav-panel').style.right=(r+54)+'px';}
+
+        // ═══ Fullscreen ═══
+        var isFS=false;
+        document.getElementById('btn-fs').addEventListener('click',function(){
+            isFS=!isFS;var b=this;
+            if(isFS){var d=document.documentElement;if(d.requestFullscreen)d.requestFullscreen();else if(d.webkitRequestFullscreen)d.webkitRequestFullscreen();document.body.classList.add('fullscreen-mode');b.querySelector('i').className='fas fa-compress';b.classList.add('active');document.getElementById('map-ctrls').style.right='16px';document.getElementById('zoom-ctrls').style.right='16px';document.getElementById('nav-panel').style.right='70px';}
+            else{if(document.exitFullscreen)document.exitFullscreen();else if(document.webkitExitFullscreen)document.webkitExitFullscreen();document.body.classList.remove('fullscreen-mode');b.querySelector('i').className='fas fa-expand';b.classList.remove('active');reposCtrls();}
+            setTimeout(function(){map.invalidateSize();},400);
+        });
+        document.addEventListener('fullscreenchange',function(){if(!document.fullscreenElement){isFS=false;document.body.classList.remove('fullscreen-mode');var b=document.getElementById('btn-fs');b.querySelector('i').className='fas fa-expand';b.classList.remove('active');reposCtrls();setTimeout(function(){map.invalidateSize();},300);}});
+
+        // ═══ Nav/Zoom ═══
+        document.getElementById('btn-nav').addEventListener('click',function(){document.getElementById('nav-panel').classList.toggle('visible');this.classList.toggle('active');});
+        document.getElementById('nav-u').addEventListener('click',function(){map.panBy([0,-100]);});
+        document.getElementById('nav-d').addEventListener('click',function(){map.panBy([0,100]);});
+        document.getElementById('nav-l').addEventListener('click',function(){map.panBy([-100,0]);});
+        document.getElementById('nav-r').addEventListener('click',function(){map.panBy([100,0]);});
+        document.getElementById('nav-c').addEventListener('click',function(){map.setView(START,START_ZOOM);});
+        document.getElementById('btn-zin').addEventListener('click',function(){map.zoomIn();});
+        document.getElementById('btn-zout').addEventListener('click',function(){map.zoomOut();});
+
+        // ═══ Скриншот ═══
+        document.getElementById('btn-png').addEventListener('click',function(){
+            notify('Создание скриншота...','info');
+            var mapEl=map.getContainer(),size=map.getSize();
+            var canvas=document.createElement('canvas');canvas.width=size.x*2;canvas.height=size.y*2;
+            var ctx=canvas.getContext('2d');ctx.scale(2,2);
+            var tileImgs=[],pending=0,done=0;
+            mapEl.querySelectorAll('.leaflet-tile-pane img, .leaflet-overlay-pane img').forEach(function(tile){
+                pending++;var img=new Image();img.crossOrigin='anonymous';
+                img.onload=function(){var r=tile.getBoundingClientRect(),mr=mapEl.getBoundingClientRect();
+                    tileImgs.push({img:img,x:r.left-mr.left,y:r.top-mr.top,w:r.width,h:r.height,opacity:parseFloat(tile.style.opacity||tile.parentElement.style.opacity||1)});
+                    done++;if(done>=pending)finish();};
+                img.onerror=function(){done++;if(done>=pending)finish();};img.src=tile.src;
+            });
+            if(!pending)finish();
+            function finish(){
+                tileImgs.forEach(function(t){ctx.globalAlpha=t.opacity;try{ctx.drawImage(t.img,t.x,t.y,t.w,t.h);}catch(e){}});ctx.globalAlpha=1;
+                mapEl.querySelectorAll('canvas.leaflet-zoom-animated').forEach(function(cv){var r=cv.getBoundingClientRect(),mr=mapEl.getBoundingClientRect();try{ctx.drawImage(cv,r.left-mr.left,r.top-mr.top,r.width,r.height);}catch(e){}});
+                var a=document.createElement('a');a.download='geoai_map_'+new Date().toISOString().slice(0,19).replace(/[:.]/g,'-')+'.png';a.href=canvas.toDataURL('image/png');a.click();notify('Скриншот сохранён','success');
+            }
+        });
+
+        // ═══ GeoJSON ═══
+        document.getElementById('btn-geojson').addEventListener('click',function(){
+            if(!currentGeo){notify('Нет полигона','warning');return;}
+            var d={type:'FeatureCollection',features:[{type:'Feature',geometry:currentGeo,properties:{created:new Date().toISOString(),area_ha:territory.areaHa.toFixed(4)}}]};
+            var b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),u=URL.createObjectURL(b),a=document.createElement('a');a.download='geoai_polygon.geojson';a.href=u;a.click();URL.revokeObjectURL(u);notify('GeoJSON сохранён','success');
+        });
+
+        // ═══ ЧАТ ═══
+        var chatBox=document.getElementById('chat-box'),chatInput=document.getElementById('chat-input'),sendBtn=document.getElementById('btn-send'),isSending=false;
+        chatInput.addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px';});
+        chatInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doSend();}});
+        sendBtn.addEventListener('click',function(){doSend();});
+        function doSend(){
+            if(isSending||sendBtn.disabled)return;var text=chatInput.value.trim();if(!text)return;
+            if(!territory.geojson){notify('Сначала выберите участок','warning');return;}
+            addChatUser(text);territory.chatHistory.push({role:'user',text:text});
+            chatInput.value='';chatInput.style.height='auto';isSending=true;sendBtn.disabled=true;showTyping();
+            var proceed=function(){
+                var payload={message:text,territory_data:{area_ha:territory.areaHa?parseFloat(territory.areaHa.toFixed(4)):null,center:territory.center,coordinates:territory.geojson?territory.geojson.coordinates:null,layers_data:territory.layersData},chat_history:territory.chatHistory.slice(0,-1)};
+                fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+                .then(function(r){return r.json();}).then(function(data){
+                    hideTyping();if(data.success){addChatAI(data.response);territory.chatHistory.push({role:'assistant',text:data.response});}else addChatErr('Ошибка: '+(data.error||'Неизвестная'));
+                }).catch(function(e){hideTyping();addChatErr('Ошибка: '+e.message);}).finally(function(){isSending=false;if(territory.geojson)sendBtn.disabled=false;});
+            };
+            if(!territory.layersData){
+                addChatSys('Загрузка данных территории...');
+                fetch('/api/territory-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geojson:territory.geojson})})
+                .then(function(r){return r.json();}).then(function(data){if(data.results){territory.layersData=data.results;addChatSys('Данные получены ✓ ('+data.results.length+' слоёв)');}proceed();})
+                .catch(function(){addChatSys('Данные слоёв недоступны');proceed();});
+            } else proceed();
+        }
+        function addChatUser(t){var d=document.createElement('div');d.className='chat-msg user';d.textContent=t;chatBox.appendChild(d);chatBox.scrollTop=chatBox.scrollHeight;}
+        function addChatAI(t){var d=document.createElement('div');d.className='chat-msg assistant';d.textContent=t;var btn=document.createElement('button');btn.className='chat-export-btn';btn.innerHTML='<i class="fas fa-file-pdf"></i> Экспорт в PDF';btn.addEventListener('click',function(){exportPDF(t);});d.appendChild(btn);chatBox.appendChild(d);chatBox.scrollTop=chatBox.scrollHeight;}
+        function addChatSys(t){var d=document.createElement('div');d.className='chat-msg system-msg';d.textContent=t;chatBox.appendChild(d);chatBox.scrollTop=chatBox.scrollHeight;}
+        function addChatErr(t){var d=document.createElement('div');d.className='chat-msg error-msg';d.textContent=t;chatBox.appendChild(d);chatBox.scrollTop=chatBox.scrollHeight;}
+        function showTyping(){var d=document.createElement('div');d.className='typing-indicator';d.id='typing-ind';d.innerHTML='<span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left:4px">GeoAI думает...</span>';chatBox.appendChild(d);chatBox.scrollTop=chatBox.scrollHeight;}
+        function hideTyping(){var t=document.getElementById('typing-ind');if(t)t.remove();}
+        function resetChat(){chatBox.innerHTML='<div class="chat-welcome" id="chat-welcome"><i class="fas fa-robot"></i>Выберите участок и задайте вопрос.<br/><strong>Например:</strong> «Хочу построить жилой комплекс»</div>';sendBtn.disabled=true;}
+
+        // ═══ PDF ═══
+        function exportPDF(aiText){
+            notify('Генерация PDF...','info');
+            var margin=40,pageW=800,lineH=22,fontSize=14,headerSize=24;
+            var meta='Дата: '+new Date().toLocaleString('ru-RU');
+            if(territory.areaHa)meta+='  |  Площадь: '+territory.areaHa.toFixed(4)+' га';
+            if(territory.center)meta+='  |  Центр: '+territory.center[0].toFixed(5)+', '+territory.center[1].toFixed(5);
+            var tc=document.createElement('canvas'),tctx=tc.getContext('2d');tctx.font=fontSize+'px Segoe UI, Arial, sans-serif';
+            var mw=pageW-margin*2,lines=[];
+            aiText.split('\n').forEach(function(p){if(p.trim()===''){lines.push('');return;}var w=p.split(' '),cl='';w.forEach(function(word){var t=cl?cl+' '+word:word;if(tctx.measureText(t).width>mw&&cl){lines.push(cl);cl=word;}else cl=t;});if(cl)lines.push(cl);});
+            var hH=100,fH=50,cH=lines.length*lineH,tH=hH+cH+fH+margin*2;
+            var cv=document.createElement('canvas');cv.width=pageW*2;cv.height=Math.max(tH*2,100);
+            var ctx=cv.getContext('2d');ctx.scale(2,2);ctx.fillStyle='#FFF';ctx.fillRect(0,0,pageW,tH);var y=margin;
+            ctx.fillStyle='#009B5F';ctx.font='bold '+headerSize+'px Segoe UI, Arial, sans-serif';ctx.fillText('GeoAI — Анализ территории',margin,y+headerSize);y+=headerSize+12;
+            ctx.fillStyle='#5A6E78';ctx.font='12px Segoe UI, Arial, sans-serif';ctx.fillText(meta,margin,y+12);y+=28;
+            ctx.strokeStyle='#D6DADE';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(margin,y);ctx.lineTo(pageW-margin,y);ctx.stroke();y+=20;
+            ctx.fillStyle='#0A2E3C';ctx.font=fontSize+'px Segoe UI, Arial, sans-serif';
+            lines.forEach(function(l){if(l.startsWith('**')||l.startsWith('##')||l.startsWith('# ')){ctx.font='bold '+(fontSize+1)+'px Segoe UI, Arial, sans-serif';ctx.fillStyle='#009B5F';ctx.fillText(l.replace(/[#*]/g,'').trim(),margin,y+fontSize);ctx.font=fontSize+'px Segoe UI, Arial, sans-serif';ctx.fillStyle='#0A2E3C';}else ctx.fillText(l,margin,y+fontSize);y+=lineH;});
+            y+=10;ctx.strokeStyle='#D6DADE';ctx.beginPath();ctx.moveTo(margin,y);ctx.lineTo(pageW-margin,y);ctx.stroke();y+=20;
+            ctx.fillStyle='#8A9BA5';ctx.font='10px Segoe UI, Arial, sans-serif';ctx.fillText('Сгенерировано GeoAI  |  '+new Date().toLocaleDateString('ru-RU'),margin,y+10);
+            var fH2=y+30,fc=document.createElement('canvas');fc.width=cv.width;fc.height=fH2*2;fc.getContext('2d').drawImage(cv,0,0);
+            try{var id=fc.toDataURL('image/png'),J=window.jspdf&&window.jspdf.jsPDF;if(!J){var a=document.createElement('a');a.download='geoai_report.png';a.href=id;a.click();notify('PNG сохранён','success');return;}
+                var pdf=new J('p','mm','a4'),pw=210,iw=pw-10,ih=(fH2/pageW)*iw;
+                if(ih<=287)pdf.addImage(id,'PNG',5,5,iw,ih);
+                else{var sH=fc.height,sW=fc.width,pH=287,ssH=(pH/ih)*sH,sY=0;while(sY<sH){var sl=Math.min(ssH,sH-sY),sc2=document.createElement('canvas');sc2.width=sW;sc2.height=sl;sc2.getContext('2d').drawImage(fc,0,sY,sW,sl,0,0,sW,sl);var sd=sc2.toDataURL('image/png'),dh=(sl/sH)*ih;if(sY>0)pdf.addPage();pdf.addImage(sd,'PNG',5,5,iw,dh);sY+=sl;}}
+                pdf.save('geoai_report_'+new Date().toISOString().slice(0,10)+'.pdf');notify('PDF сохранён','success');
+            }catch(e){var a3=document.createElement('a');a3.download='geoai_report.png';a3.href=fc.toDataURL('image/png');a3.click();notify('PNG сохранён','warning');}
+        }
+
+        loadLayers();
+        console.log('[GeoAI] Инициализировано (Яндекс.Карты + Яндекс Геокодер + GEE слои)');
+    })();
+    </script>
+</body>
+</html>

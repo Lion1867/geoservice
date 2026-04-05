@@ -1,0 +1,18 @@
+{
+  "hit_rate_at_5": {
+    "value": 0.8704,
+    "threshold": 0.8
+  },
+  "mrr": {
+    "value": 0.7496,
+    "threshold": 0.7
+  },
+  "sbert_score": {
+    "value": 0.844,
+    "threshold": 0.68
+  },
+  "rouge_l_f1": {
+    "value": 0.2912,
+    "threshold": 0.3
+  }
+}

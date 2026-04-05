@@ -1,0 +1,12 @@
+httpx
+fastapi
+uvicorn
+earthengine-api
+python-dotenv
+qdrant_client
+python-multipart
+PyMuPDF
+python-docx
+pandas
+matplotlib
+rouge_score
