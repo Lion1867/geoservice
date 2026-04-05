@@ -1,0 +1,5 @@
+uploads
+qdrant_data
+logs
+__pycache__
+bm25_index
