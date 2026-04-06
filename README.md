@@ -312,13 +312,14 @@ cd geoservice
 ### 2. Создание виртуального окружения
 
 ```bash
-python -m venv venv
 
 # Linux / macOS
-source venv/bin/activate
+python -m venv backend/venv
+source backend/venv/bin/activate
 
 # Windows
-venv\Scripts\activate
+python -m venv backend\venv
+backend\venv\Scripts\activate
 ```
 
 ### 3. Установка зависимостей
