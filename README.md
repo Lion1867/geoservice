@@ -117,6 +117,8 @@ geoservice/
 ├── frontend/                       # Клиентская часть
 │   └── index.html                  # Главная страница
 │
+├── presentation/                   # Материалы для защиты проекта
+│
 ├── .gitignore
 └── README.md
 ```
